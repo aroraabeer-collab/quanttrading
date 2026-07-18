@@ -1,0 +1,17 @@
+# Secrets
+.env
+
+# Data cache & runtime state
+data/cache/*.parquet
+state/
+*.log
+
+# Reports
+reports/*.html
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/

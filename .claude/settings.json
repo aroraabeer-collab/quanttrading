@@ -1,0 +1,5 @@
+{
+  "enabledPlugins": {
+    "bigdata-com@claude-plugins-official": true
+  }
+}

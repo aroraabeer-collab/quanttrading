@@ -39,48 +39,60 @@ cp .env.example .env         # then fill in Fyers credentials
 
 ## Commands
 
-Prefix everything with the uv path if `uv` isn't on your PATH:
-`export PATH="$HOME/.local/bin:$PATH"`. All commands run from the project root.
+All commands run from the project root. **Use `python` with the venv activated**
+(this is the reliable path — `uv run` rebuilds on every call and can hang):
 
-> **If `uv run …` hangs (prints nothing / never starts):** its per-run rebuild is
-> stuck. Skip it — activate the venv once and use plain `python`:
-> ```bash
-> source .venv/bin/activate
-> python scripts/run_options_daemon.py      # e.g.
-> ```
-> (Or `uv run --no-sync scripts/…` to keep uv but skip the rebuild.)
-> Everywhere below, `uv run python X` and `python X` (with the venv active) are interchangeable.
+```bash
+source .venv/bin/activate     # activate once per terminal — then use `python …`
+```
+> `uv run scripts/X.py` also works *if* it doesn't hang. If it prints nothing /
+> never starts, use `python scripts/X.py` (venv active) or `uv run --no-sync scripts/X.py`.
+> Throughout this file, `python …` assumes the venv is active.
 
-### One-time setup
+### 1. One-time setup
 ```bash
 uv sync                               # create venv + install all dependencies
-cp .env.example .env                  # then paste your Fyers APP_ID / SECRET_ID
+cp .env.example .env                  # then paste your Fyers APP_ID / SECRET_ID into .env
 ```
 
-### Every day you trade (Fyers token expires daily)
+### 2. Every day you trade (Fyers token expires daily)
 ```bash
-uv run scripts/fyers_auth.py          # log in, refresh token → writes .env
+python scripts/fyers_auth.py          # log in, refresh token → writes .env
 ```
-> Run this once each morning, or whenever you see `Could not authenticate (-16)`.
+> Run once each morning, or whenever you see `valid token` / `authenticate (-15/-16)`.
 
-### ⭐ The live options strategy (current focus) + widget
+### 3. ⭐ The live options strategy (the real edge) + widget
 ```bash
-uv run scripts/run_options_paper.py   # one manual step: manage/enter the strangle + show track record
-uv run scripts/run_options_daemon.py  # OR run continuously: auto-manages during market hours, logs P&L
-uv run scripts/pnl_widget.py          # floating Apple-Stocks-style P&L card (reads the daemon's log)
+python scripts/run_options_paper.py   # one manual step: manage/enter the strangle + track record
+python scripts/run_options_daemon.py  # OR run continuously: auto-manages in market hours, logs P&L
+python scripts/pnl_widget.py          # floating Apple-Stocks-style P&L card (reads the daemon log)
 ```
-Typical live setup — two Terminal tabs: the **daemon** in one, the **widget** in
-the other. Stop either with `Ctrl+C`, or `pkill -f run_options_daemon.py` /
-`pkill -f pnl_widget.py`.
+Typical setup — two Terminal tabs: the **daemon** in one, the **widget** in the
+other. Stop with `Ctrl+C`, or `pkill -f run_options_daemon.py` / `pkill -f pnl_widget.py`.
 
-### Research & backtests
+### 4. The share-scalper (learning tool — this approach loses to costs)
 ```bash
-uv run scripts/run_options.py                       # options-selling (vol risk premium) backtest
-uv run scripts/download_data.py --resolution D --days 1825 --universe nifty200   # daily bars
-uv run scripts/run_ml.py --universe nifty200 --top-k 20                          # ML factor model
-uv run scripts/run_ml_paper.py --top-k 20                                        # ML equity paper rebalance
-uv run scripts/run_backtest.py                      # intraday breakout backtest (early experiment)
-uv run pytest -q                                     # 36 unit tests
+python scripts/run_scalper_daemon.py  # autonomous dip-buy/rip-sell; shows GROSS − COSTS = NET
+```
+> Deliberately the falsified strategy — run it to *watch* transaction costs drain NET below GROSS.
+
+### 5. Research & backtests
+```bash
+python scripts/run_options.py                                                 # options-selling backtest
+python scripts/download_data.py --resolution D --days 1825 --universe nifty200 # daily bars → cache
+python scripts/run_ml.py --universe nifty200 --top-k 20                        # ML factor model
+python scripts/run_ml_paper.py --top-k 20                                      # ML equity paper rebalance
+python scripts/run_backtest.py                                                 # intraday breakout backtest
+python -m pytest -q                                                            # 36 unit tests
+```
+
+### 6. Save & sync to GitHub (private repo)
+```bash
+git add -A && git commit -m "your message"   # .env stays ignored automatically
+git push                                       # push to the private repo
+# fresh machine:
+git clone https://github.com/aroraabeer-collab/quanttrading.git
+cd quanttrading && uv sync && cp .env.example .env   # re-enter Fyers creds (not in the repo)
 ```
 
 ## Layout

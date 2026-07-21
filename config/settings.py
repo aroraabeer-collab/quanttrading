@@ -54,7 +54,9 @@ class Settings(BaseSettings):
 
     # --- REAL-MONEY guardrails (enforced by LiveCondorAdvisor, not just docs) ---
     # Small account => defined-risk iron condors ONLY. Never a naked position.
-    live_account: float = Field(default=50_000.0, alias="QT_LIVE_ACCOUNT")
+    live_account: float = Field(default=150_000.0, alias="QT_LIVE_ACCOUNT")
+    # Stop-loss on a naked strangle, as a multiple of premium collected (validated: 2x).
+    live_stop_mult: float = Field(default=2.0, alias="QT_LIVE_STOP_MULT")
     live_max_risk_pct: float = Field(default=0.12, alias="QT_LIVE_MAX_RISK")   # max loss <=12% of account
     live_max_lots: int = Field(default=1, alias="QT_LIVE_MAX_LOTS")
     live_halt_drawdown: float = Field(default=0.20, alias="QT_LIVE_HALT_DD")   # stop trading at -20%

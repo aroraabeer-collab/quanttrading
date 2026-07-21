@@ -24,6 +24,7 @@ import pandas as pd
 from backtest.costs import GST_RATE
 from config.settings import Settings, get_settings
 from options.data import NIFTY_LOT, OptionsData, atm_strike
+from options.vol_backtest import MARGIN_PER_LOT
 
 
 def _leg_cost(n_legs: int, premium_value: float) -> float:
@@ -39,6 +40,7 @@ class Ticket:
 
     ok: bool
     reason: str = ""
+    structure: str = "condor"       # "strangle" (validated) or "condor" (defined-risk)
     expiry: date | None = None
     spot: float = 0.0
     vix: float = 0.0
@@ -78,17 +80,37 @@ class LiveCondorAdvisor:
                 f"NO TRADE — VIX {vix:.1f} is below {s.vix_min}. Premium is too cheap "
                 "to justify the tail risk. Wait for richer volatility."))
 
-        # --- Build the 4 legs: short ~1SD strangle + tight protective wings ---
+        # --- Short ~1SD strangle (the validated core) ---
         move = spot * (vix / 100.0) * sqrt(dte / 365.0)
         kc, kp = atm_strike(spot + move), atm_strike(spot - move)
-        wing = s.live_wing_points
         short_ce = self._pick(opts, "CE", kc)
         short_pe = self._pick(opts, "PE", kp)
+        if not (short_ce and short_pe):
+            return Ticket(ok=False, spot=spot, vix=vix, expiry=expiry, dte=dte, reason=(
+                "NO TRADE — could not find the short strikes in the live chain."))
+
+        # Prefer the VALIDATED naked strangle when the account can margin it AND
+        # absorb its stop-loss within the risk limit; otherwise fall back to the
+        # defined-risk condor.
+        strangle_prem = (short_ce["ltp"] + short_pe["ltp"]) * NIFTY_LOT
+        stop_risk = s.live_stop_mult * strangle_prem
+        if s.live_account >= MARGIN_PER_LOT and stop_risk <= s.live_max_risk_pct * s.live_account:
+            legs = [
+                {"action": "SELL", **{k: short_ce[k] for k in ("strike", "symbol", "ltp")}, "type": "CE"},
+                {"action": "SELL", **{k: short_pe[k] for k in ("strike", "symbol", "ltp")}, "type": "PE"},
+            ]
+            return Ticket(ok=True, structure="strangle", expiry=expiry, spot=spot, vix=vix,
+                          dte=dte, legs=legs, net_premium=strangle_prem,
+                          max_loss=stop_risk, max_loss_pct=stop_risk / s.live_account,
+                          est_costs=_leg_cost(2, strangle_prem))
+
+        # --- Defined-risk condor: add tight protective wings ---
+        wing = s.live_wing_points
         long_ce = self._pick(opts, "CE", kc + wing)
         long_pe = self._pick(opts, "PE", kp - wing)
-        if not all([short_ce, short_pe, long_ce, long_pe]):
+        if not (long_ce and long_pe):
             return Ticket(ok=False, spot=spot, vix=vix, expiry=expiry, dte=dte, reason=(
-                "NO TRADE — could not find all four strikes in the live chain "
+                "NO TRADE — could not find the wing strikes in the live chain "
                 "(illiquid or too far out). Try again nearer the money."))
 
         credit = (short_ce["ltp"] + short_pe["ltp"]) - (long_ce["ltp"] + long_pe["ltp"])
@@ -141,10 +163,12 @@ def format_ticket(t: Ticket, s: Settings | None = None) -> str:
     s = s or get_settings()
     if not t.ok:
         return f"\n🛑 {t.reason}\n"
+    name = ("SHORT STRANGLE (validated)" if t.structure == "strangle"
+            else "IRON CONDOR (defined risk)")
     lines = [
         "",
         "=" * 62,
-        f"  IRON CONDOR — place manually in Fyers   (expiry {t.expiry}, {t.dte} DTE)",
+        f"  {name} — place manually in Fyers   (expiry {t.expiry}, {t.dte} DTE)",
         "=" * 62,
         f"  NIFTY spot {t.spot:,.0f}   ·   VIX {t.vix:.1f}   ·   1 lot ({NIFTY_LOT})",
         "",
@@ -155,14 +179,22 @@ def format_ticket(t: Ticket, s: Settings | None = None) -> str:
     lines += [
         "",
         f"  Credit received : ₹{t.net_premium:,.0f}   ← your max profit",
-        f"  MAX LOSS        : ₹{t.max_loss:,.0f}   ({t.max_loss_pct*100:.0f}% of account)  ← capped by wings",
-        f"  Est. costs      : ₹{t.est_costs:,.0f}   (4 legs, round trip)",
+        f"  MAX LOSS        : ₹{t.max_loss:,.0f}   ({t.max_loss_pct*100:.0f}% of account)"
+        + ("   ← at your stop" if t.structure == "strangle" else "   ← capped by wings"),
+        f"  Est. costs      : ₹{t.est_costs:,.0f}   ({len(t.legs)} legs, round trip)",
         f"  Close at        : ₹{t.net_premium * s.live_profit_target:,.0f} profit "
-        f"({s.live_profit_target*100:.0f}% of credit) — don't get greedy",
-        "",
-        "  ⚠  Place ALL FOUR legs. The two BUY legs are your safety net —",
-        "     without them one bad move can exceed your whole account.",
-        "=" * 62,
+        f"({s.live_profit_target*100:.0f}% of credit) — validated: this beats holding to expiry",
         "",
     ]
+    if t.structure == "strangle":
+        lines += [
+            f"  ⚠  NAKED position — your {s.live_stop_mult:g}x stop is a PLAN, not a guarantee.",
+            "     An overnight gap can blow through it. Never leave this unmonitored.",
+        ]
+    else:
+        lines += [
+            "  ⚠  Place ALL FOUR legs. The two BUY legs are your safety net —",
+            "     without them one bad move can exceed your whole account.",
+        ]
+    lines += ["=" * 62, ""]
     return "\n".join(lines)

@@ -114,15 +114,132 @@ def run_vol_backtest(
         })
 
     trades = pd.DataFrame(rows)
-    equity = trades["pnl"].cumsum()
-    stats = _stats(trades, hold_days)
+    equity = trades["pnl"].cumsum() if not trades.empty else pd.Series(dtype=float)
+    stats = _stats(trades, hold_days, span_days=n)
     return VolResult(trades, equity, stats)
 
 
-def _stats(t: pd.DataFrame, hold_days: int) -> dict:
+def run_vol_backtest_reentry(
+    spot: pd.Series,
+    vix: pd.Series,
+    hold_days: int = 21,
+    sd_width: float = 1.0,
+    wing_sd: float | None = None,
+    stop_mult: float | None = None,
+    profit_target: float | None = None,
+    vix_min: float | None = None,
+    cooldown_days: int = 1,
+) -> VolResult:
+    """Event-driven variant: **redeploys capital as soon as a trade exits.**
+
+    `run_vol_backtest` enters only on fixed `hold_days` slots, so an early exit
+    leaves capital idle until the next slot — which unfairly penalises taking
+    profit early. Here the next position opens `cooldown_days` after the previous
+    one closes, so faster cycling actually earns its extra cycles.
+
+    Stats are annualised by **actual elapsed time**, not an assumed cycle count.
+    """
+    df = pd.concat([spot.rename("S"), vix.rename("V")], axis=1).dropna()
+    S, V, idx = df["S"].to_numpy(), df["V"].to_numpy(), df.index
+    n = len(df)
+    rows: list[dict] = []
+    days_in_market = 0
+
+    i = 0
+    while i < n - 1:
+        if vix_min is not None and V[i] < vix_min:
+            i += 1                       # wait for premium to be worth selling
+            continue
+        exp_i = min(i + hold_days, n - 1)
+        T0 = (idx[exp_i] - idx[i]).days / 365.0
+        if exp_i <= i or T0 <= 0:
+            break
+
+        S0, sig0 = S[i], V[i] / 100.0
+        move = S0 * sig0 * np.sqrt(T0)
+        Kc, Kp = _round_strike(S0 + sd_width * move), _round_strike(S0 - sd_width * move)
+        wings, n_legs = None, 2
+        if wing_sd is not None:
+            wings = (_round_strike(S0 + wing_sd * move), _round_strike(S0 - wing_sd * move))
+            n_legs = 4
+        prem = _leg_value(S0, Kc, Kp, T0, sig0, wings)
+        prem_rs = prem * LOT
+
+        exit_i, exit_val, reason = exp_i, None, "expiry"
+        if stop_mult is not None or profit_target is not None:
+            for d in range(i + 1, exp_i):
+                Td = (idx[exp_i] - idx[d]).days / 365.0
+                cur = _leg_value(S[d], Kc, Kp, Td, V[d] / 100.0, wings)
+                mtm = (prem - cur) * LOT
+                if stop_mult is not None and mtm <= -stop_mult * prem_rs:
+                    exit_i, exit_val, reason = d, cur, "stop"
+                    break
+                if profit_target is not None and mtm >= profit_target * prem_rs:
+                    exit_i, exit_val, reason = d, cur, "target"
+                    break
+        if exit_val is None:
+            exit_val = _leg_settle(S[exp_i], Kc, Kp, wings)
+
+        cost = _cost(prem, n_legs)
+        pnl = (prem - exit_val) * LOT - cost
+        held = exit_i - i
+        days_in_market += held
+        rows.append({
+            "entry": idx[i].date(), "exit": idx[exit_i].date(),
+            "spot_in": S0, "spot_out": S[exit_i], "vix": V[i],
+            "Kc": Kc, "Kp": Kp, "premium": prem_rs, "pnl": pnl,
+            "cost": cost, "reason": reason, "held": held,
+        })
+        i = exit_i + cooldown_days       # ← redeploy instead of waiting for a slot
+
+    trades = pd.DataFrame(rows)
+    equity = trades["pnl"].cumsum() if not trades.empty else pd.Series(dtype=float)
+    return VolResult(trades, equity, _stats_reentry(trades, n, days_in_market))
+
+
+def _stats_reentry(t: pd.DataFrame, span_days: int, days_in_market: int) -> dict:
+    """Annualised by real elapsed time, so variants with different trade counts
+    are directly comparable."""
+    if t.empty:
+        return {"trades": 0, "win_rate": 0.0, "sharpe": float("nan")}
+    years = max(span_days / TRADING_YEAR, 1e-9)
     pnl = t["pnl"]
     wins, losses = pnl[pnl > 0], pnl[pnl <= 0]
-    cycles_per_yr = TRADING_YEAR / hold_days
+    ret = pnl / MARGIN_PER_LOT
+    trades_per_yr = len(t) / years
+    sharpe = (ret.mean() / ret.std() * np.sqrt(trades_per_yr)) if ret.std() > 0 else float("nan")
+    eq = pnl.cumsum()
+    return {
+        "trades": len(t),
+        "trades_per_yr": trades_per_yr,
+        "win_rate": len(wins) / len(t) * 100,
+        "avg_win": wins.mean() if len(wins) else 0.0,
+        "avg_loss": losses.mean() if len(losses) else 0.0,
+        "worst_loss": pnl.min(),
+        "total_pnl": pnl.sum(),
+        "ann_return_pct": (pnl.sum() / MARGIN_PER_LOT) / years * 100,
+        "sharpe": sharpe,
+        "max_dd": (eq - eq.cummax()).min(),
+        "avg_days_held": t["held"].mean(),
+        "utilization_pct": days_in_market / span_days * 100,
+        "total_costs": t["cost"].sum(),
+    }
+
+
+def _stats(t: pd.DataFrame, hold_days: int, span_days: int | None = None) -> dict:
+    if t.empty:  # e.g. a vix_min so high that nothing ever qualified
+        return {"cycles": 0, "win_rate": 0.0, "avg_win": 0.0, "avg_loss": 0.0,
+                "worst_loss": 0.0, "best_win": 0.0, "total_pnl": 0.0, "avg_pnl": 0.0,
+                "sharpe": float("nan"), "max_dd": 0.0, "ann_return_pct": 0.0}
+    pnl = t["pnl"]
+    wins, losses = pnl[pnl > 0], pnl[pnl <= 0]
+    # Annualise by how many cycles ACTUALLY happened. Using a fixed
+    # TRADING_YEAR/hold_days inflates Sharpe whenever cycles are skipped
+    # (e.g. by the VIX filter) — which silently overstated earlier results.
+    if span_days:
+        cycles_per_yr = len(t) / max(span_days / TRADING_YEAR, 1e-9)
+    else:
+        cycles_per_yr = TRADING_YEAR / hold_days
     ret = pnl / MARGIN_PER_LOT
     sharpe = ret.mean() / ret.std() * np.sqrt(cycles_per_yr) if ret.std() > 0 else float("nan")
     eq = pnl.cumsum()

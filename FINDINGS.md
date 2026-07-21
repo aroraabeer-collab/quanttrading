@@ -30,7 +30,8 @@ market beta (positional). Proven ~7 different ways.
 Retail overpays for options; sellers are paid the difference. Over 5.4 years,
 India VIX ran **26% above** realized volatility on average — that gap is the edge.
 
-- **Strategy:** sell a ~1-SD NIFTY strangle each month, 2× premium stop-loss.
+- **Strategy:** sell a ~1-SD NIFTY strangle, 2× premium stop-loss, **take profit at
+  50% of credit** (see the cycling study below).
 - **Result (model-based, 1 lot, 5.4 yr):** 78% win rate, +₹2.93L, **Sharpe 1.04**,
   worst single loss −₹37k. Best risk-adjusted result in the project.
 - **Why not stocks:** tested a 178-stock basket → Sharpe 0.06, −56% drawdown.
@@ -42,6 +43,40 @@ India VIX ran **26% above** realized volatility on average — that gap is the e
   slippage could make a live loss *worse* than −₹37k.
 
 Reports: `reports/options_report.html`, `reports/pnl_report.html`.
+
+## Capital cycling: take profit at 50% (the biggest single improvement)
+
+An earlier test concluded profit-taking *hurt* (Sharpe 0.61). **That test was
+wrong** — `run_vol_backtest` only enters on fixed 21-day slots, so exiting at day
+8 left capital **idle for 13 days**. It paid the cost of early exit and never
+received the benefit. `run_vol_backtest_reentry` fixes this by redeploying as
+soon as a trade closes. Over 5.4 yrs, 1 lot, stop 2×, VIX≥13:
+
+| variant | trades/yr | win% | annual % | Sharpe | avg days held |
+|---|---|---|---|---|---|
+| hold to expiry | 9.9 | 74% | 21.9% | 0.64 | 19.4 |
+| take 25% | 26.3 | 92% | 21.7% | 0.60 | 6.2 |
+| **take 50%** | **16.6** | **91%** | **38.4%** | **1.08** | **10.8** |
+| take 75% | 12.9 | 80% | 16.4% | 0.38 | 14.4 |
+
+**Taking 50% nearly doubles annualised return and lifts Sharpe from 0.64 → 1.08**,
+while holding positions for *half* the time. Extra costs (₹10.1k vs ₹6.1k) are far
+outweighed by the extra cycles. Adopted as the default (`live_profit_target`).
+
+## ⚠️ Correction to earlier numbers
+
+`_stats` annualised Sharpe using a **fixed** `TRADING_YEAR / hold_days`, regardless
+of how many cycles actually occurred — so any run that *skipped* cycles (the VIX
+filter) had its Sharpe inflated. Now fixed to annualise by real elapsed time:
+
+- Stop-loss strangle, no VIX filter: **Sharpe 1.04** — unchanged, was always correct
+- With VIX≥13 filter: previously reported **1.40**, actually **1.16** (still an
+  improvement, just smaller than claimed)
+
+Also note the re-entry engine enters as soon as VIX crosses 13, so it sells
+thinner premium more often (26% of entries at VIX<14, vs 16% for slot-based).
+Its lower absolute baseline is realistic, not a bug — but it means **the honest
+hold-to-expiry baseline is ~0.64 Sharpe, not ~1.0**.
 
 ## Current status: paper validation (do this before real money)
 

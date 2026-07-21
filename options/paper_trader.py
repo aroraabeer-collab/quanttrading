@@ -31,11 +31,15 @@ class OptionsPaperTrader:
     def __init__(
         self, data: OptionsData, initial_capital: float = 1_000_000,
         sd_width: float = 1.0, stop_mult: float = 2.0, target_dte: int = 25,
-        vix_min: float = 13.0, state_file: Path | None = None,
+        vix_min: float = 13.0, profit_target: float = 0.50,
+        state_file: Path | None = None,
     ) -> None:
         self.d = data
         self.sd_width = sd_width
         self.stop_mult = stop_mult
+        # Close at this fraction of credit. Validated: 38.4%/yr & Sharpe 1.08 vs
+        # 21.9% & 0.64 for holding to expiry (see FINDINGS.md cycling study).
+        self.profit_target = profit_target
         self.target_dte = target_dte
         self.vix_min = vix_min   # only sell when implied vol is rich enough (validated: Sharpe 1.04->1.40)
         self.state_file = state_file or STATE_FILE
@@ -126,6 +130,10 @@ class OptionsPaperTrader:
         elif mtm <= -self.stop_mult * pos["premium"] * NIFTY_LOT:
             realized = mtm - _cost(pos["premium"])
             reason = "stop-loss"
+        elif mtm >= self.profit_target * pos["premium"] * NIFTY_LOT:
+            # Don't hold for the last of the premium — that's where the tail lives.
+            realized = mtm - _cost(pos["premium"])
+            reason = "profit-target"
 
         if reason:
             self.state["realized_pnl"] += realized

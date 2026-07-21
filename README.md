@@ -70,6 +70,19 @@ python scripts/pnl_widget.py          # floating Apple-Stocks-style P&L card (re
 Typical setup — two Terminal tabs: the **daemon** in one, the **widget** in the
 other. Stop with `Ctrl+C`, or `pkill -f run_options_daemon.py` / `pkill -f pnl_widget.py`.
 
+### 3b. 💰 REAL MONEY — advisor / monitor / autonomous daemon
+```bash
+python scripts/run_live_daemon.py --mode alert  # ⭐ watches all day, macOS-notifies when to act
+python scripts/run_live_daemon.py --mode shadow # decide + log only (silent validation)
+python scripts/live_advisor.py                  # manual: show the condor to place (or refusal)
+python scripts/live_advisor.py --record         # log your actual fill
+python scripts/live_monitor.py [--watch]        # track the open position
+python scripts/live_monitor.py --close 1850     # record the exit (₹ debit paid)
+```
+> **Never places an order** — the only broker calls are read-only. Defined-risk
+> iron condors only, with hard gates (≤12% risk/trade, VIX≥13, halt at −20%).
+> Read **[LIVE_TRADING.md](LIVE_TRADING.md)** before your first real trade.
+
 ### 4. The share-scalper (learning tool — this approach loses to costs)
 ```bash
 python scripts/run_scalper_daemon.py  # autonomous dip-buy/rip-sell; shows GROSS − COSTS = NET

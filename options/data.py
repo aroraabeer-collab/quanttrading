@@ -10,7 +10,9 @@ returns ``no_data``, so we never rely on guessing the calendar perfectly.
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+import calendar
+import re
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 
@@ -35,6 +37,43 @@ def monthly_symbol(expiry: date, strike: int, opt: str) -> str:
 
 def atm_strike(spot: float) -> int:
     return int(round(spot / STRIKE_STEP) * STRIKE_STEP)
+
+
+_CODE_MONTH = {v: k for k, v in _MONTH_CODE.items()}
+_WEEKLY_RE = re.compile(r"NIFTY(\d{2})([1-9OND])(\d{2})\d+(?:CE|PE)$", re.I)
+_MONTHLY_RE = re.compile(r"NIFTY(\d{2})([A-Z]{3})\d+(?:CE|PE)$", re.I)
+
+
+def parse_expiry(symbol: str) -> date | None:
+    """Recover the expiry date encoded in a Fyers NIFTY option symbol.
+
+    Weekly ``NIFTY<YY><M><DD>`` (e.g. ``NIFTY2671424050CE`` -> 2026-07-14) or
+    monthly ``NIFTY<YY><MON>`` (e.g. ``NIFTY26JUL24000CE``). Returns None if the
+    symbol doesn't carry a recognisable expiry.
+    """
+    s = symbol.upper().split(":")[-1]
+    if m := _MONTHLY_RE.match(s):
+        yy, mon = m.groups()
+        try:
+            month = datetime.strptime(mon, "%b").month
+        except ValueError:
+            return None
+        # Monthly contracts expire on the last Tuesday; we only need the month.
+        last = calendar.monthrange(2000 + int(yy), month)[1]
+        d = date(2000 + int(yy), month, last)
+        while d.weekday() != 1:  # Tuesday
+            d -= timedelta(days=1)
+        return d
+    if m := _WEEKLY_RE.match(s):
+        yy, mcode, dd = m.groups()
+        month = _CODE_MONTH.get(mcode)
+        if not month:
+            return None
+        try:
+            return date(2000 + int(yy), month, int(dd))
+        except ValueError:
+            return None
+    return None
 
 
 class OptionsData:

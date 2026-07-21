@@ -110,6 +110,29 @@ class FyersProvider(DataProvider):
                     prices[sym] = float(lp)
         return prices
 
+    # --- positions (READ-ONLY) ---------------------------------------------
+    def positions(self) -> list[dict]:
+        """Current open broker positions. **Read-only — never places orders.**
+
+        Lets the live daemon detect that you actually placed (or closed) a trade,
+        and record your real fills. Reading positions needs no Algo-ID; only
+        automated *order placement* does.
+        """
+        resp = self._fyers.positions()
+        if resp.get("s") != "ok":
+            raise ProviderError(f"Fyers positions failed: {resp}")
+        out = []
+        for p in resp.get("netPositions", []):
+            qty = int(p.get("netQty") or 0)
+            if qty == 0:
+                continue  # squared off
+            out.append({
+                "symbol": p.get("symbol"),
+                "qty": qty,
+                "avg_price": float(p.get("netAvg") or 0.0),
+            })
+        return out
+
     # --- live feed (polling) ----------------------------------------------
     def subscribe(self, symbols: list[str], callback: QuoteCallback) -> None:
         """Poll quotes on an interval and invoke ``callback`` per symbol.

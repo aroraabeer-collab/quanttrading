@@ -34,8 +34,13 @@ class LiveMonitor:
         debit_to_close = (shorts - longs) * NIFTY_LOT
         pnl = pos["credit"] - debit_to_close
 
-        expiry = pd.to_datetime(pos["expiry"]).date()
-        dte = (expiry - pd.Timestamp.now(tz="Asia/Kolkata").date()).days
+        # A position detected from the broker may not carry a clean expiry —
+        # degrade gracefully rather than crash the daemon.
+        try:
+            expiry = pd.to_datetime(pos["expiry"]).date()
+            dte = (expiry - pd.Timestamp.now(tz="Asia/Kolkata").date()).days
+        except Exception:  # noqa: BLE001 — unknown/unparseable expiry
+            expiry, dte = None, None
         return {
             "pnl": pnl,
             "credit": pos["credit"],
@@ -43,7 +48,7 @@ class LiveMonitor:
             "debit_to_close": debit_to_close,
             "pct_of_credit": pnl / pos["credit"] * 100 if pos["credit"] else 0.0,
             "dte": dte,
-            "expiry": str(expiry),
+            "expiry": str(expiry) if expiry else "unknown",
             "legs": legs,
         }
 
@@ -57,6 +62,8 @@ class LiveMonitor:
         if m["pnl"] <= -0.75 * m["max_loss"]:
             out.append(f"🛑 CUT IT — loss ₹{m['pnl']:,.0f} is near your ₹{m['max_loss']:,.0f} cap. "
                        "Close now; don't wait for the wings to absorb it.")
+        if m["dte"] is None:
+            return out  # expiry unknown — P&L alerts still apply, date ones can't
         if 0 <= m["dte"] <= 1:
             out.append(f"⏰ EXPIRY {m['expiry']} — close today. Do not carry it into settlement.")
         if m["dte"] < 0:
@@ -72,7 +79,8 @@ def format_status(m: dict | None, alerts: list[str], s: Settings | None = None) 
     lines = [
         "",
         "=" * 58,
-        f"  LIVE CONDOR   ·   expiry {m['expiry']}   ·   {m['dte']} DTE",
+        f"  LIVE CONDOR   ·   expiry {m['expiry']}   ·   "
+        f"{m['dte'] if m['dte'] is not None else '?'} DTE",
         "=" * 58,
         f"  P&L now      : {sign}₹{abs(m['pnl']):,.0f}   ({m['pct_of_credit']:+.0f}% of credit)",
         f"  Credit taken : ₹{m['credit']:,.0f}   ← max profit",

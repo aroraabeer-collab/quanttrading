@@ -44,23 +44,54 @@ capped one. Without them, one gap can exceed your entire account.
 
 ## The daily flow
 
+**Automated (recommended)** — one command watches all day and pings you:
 ```bash
-python scripts/fyers_auth.py                 # 1. refresh token (each morning)
-python scripts/live_advisor.py               # 2. see the ticket — or a refusal
-#    → place all 4 legs yourself in the Fyers app
-python scripts/live_advisor.py --record      # 3. log your ACTUAL fill
-python scripts/live_monitor.py               # 4. check it (daily; --watch to poll)
-python scripts/live_monitor.py --close 1850  # 5. record the exit when you close
+python scripts/fyers_auth.py                      # 1. refresh token (each morning)
+python scripts/run_live_daemon.py --mode alert    # 2. leave it running
+#    → macOS notification when it's time to place or close
+#    → you click in the Fyers app; it auto-detects and records your real fills
 ```
+
+**Manual (if you prefer step-by-step):**
+```bash
+python scripts/live_advisor.py               # see the ticket — or a refusal
+python scripts/live_advisor.py --record      # log your ACTUAL fill
+python scripts/live_monitor.py               # check it (--watch to poll)
+python scripts/live_monitor.py --close 1850  # record the exit
+```
+
+### Daemon modes
+| Mode | What it does |
+|---|---|
+| `shadow` | Decides and logs only — silent. Builds the validation record. **Default.** |
+| `alert` | Also fires a macOS notification when action is due. **Run this.** |
+| `auto` | Would place real orders — **refused**: needs a registered Algo-ID (see below). |
+
+Decisions are logged to `state/decisions.jsonl` — after a few weeks that's your
+evidence for whether the automation actually makes the right calls.
 
 ## What this software will NOT do
 
-- **It never places an order.** Every trade is your click, your decision.
-- **It won't automate.** Automated order placement requires a SEBI-registered
-  Algo-ID (mandatory since Apr 2026) — and a human brake is the point on a
-  tail-risk strategy.
+- **It never places an order.** Verified: the only broker calls in the whole
+  codebase are `optionchain`, `history`, `quotes`, `positions` — all read-only.
+  Every trade is your click, your decision.
 - **It can't predict.** ~78–84% win rate means roughly **1 in 5 trades loses**,
   and losses are bigger than wins. That's the deal you're accepting.
+
+## If you want true auto-execution later
+
+Automated order placement has required a **SEBI-registered Algo-ID** since April
+2026. Running an unregistered algo risks regulatory action and broker suspension.
+To unlock it properly:
+
+1. **Request algo-trading registration through Fyers** (they file for the Algo-ID)
+2. Set `QT_LIVE_ALGO_ID` in `.env`
+3. Implement `FyersBroker(Broker)` against the existing interface in
+   `execution/interfaces.py` and wire it into the daemon's `auto` mode
+4. **Run `shadow` mode first** — only trust it with orders once the decision log
+   shows it consistently made the right calls
+
+Until step 1 is done, `--mode auto` refuses to start, by design.
 
 ## Honest expectations
 

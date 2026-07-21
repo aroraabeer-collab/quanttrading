@@ -43,6 +43,15 @@ class Settings(BaseSettings):
     # adding this filter lifted backtest Sharpe from 1.04 -> 1.40).
     vix_min: float = Field(default=13.0, alias="QT_VIX_MIN")
 
+    # --- Live daemon execution mode ---
+    # "shadow" = decide + log only · "alert" = notify the human to place it
+    # "auto"   = place REAL orders — requires a SEBI-registered Algo-ID (see
+    #            live_algo_id). Refused outright when that is unset.
+    live_mode: str = Field(default="shadow", alias="QT_LIVE_MODE")
+    live_algo_id: str = Field(default="", alias="QT_LIVE_ALGO_ID")
+    # Re-notify the same alert only after this many seconds (anti-spam).
+    live_notify_repeat_s: float = Field(default=1800.0, alias="QT_LIVE_NOTIFY_REPEAT")
+
     # --- REAL-MONEY guardrails (enforced by LiveCondorAdvisor, not just docs) ---
     # Small account => defined-risk iron condors ONLY. Never a naked position.
     live_account: float = Field(default=50_000.0, alias="QT_LIVE_ACCOUNT")

@@ -74,14 +74,15 @@ other. Stop with `Ctrl+C`, or `pkill -f run_options_daemon.py` / `pkill -f pnl_w
 ```bash
 python scripts/run_live_daemon.py --mode alert  # ⭐ watches all day, macOS-notifies when to act
 python scripts/run_live_daemon.py --mode shadow # decide + log only (silent validation)
-python scripts/live_advisor.py                  # manual: show the condor to place (or refusal)
+python scripts/live_advisor.py                  # manual: show the trade to place (or refusal)
 python scripts/live_advisor.py --record         # log your actual fill
 python scripts/live_monitor.py [--watch]        # track the open position
 python scripts/live_monitor.py --close 1850     # record the exit (₹ debit paid)
 ```
-> **Never places an order** — the only broker calls are read-only. Defined-risk
-> iron condors only, with hard gates (≤12% risk/trade, VIX≥13, halt at −20%).
-> Read **[LIVE_TRADING.md](LIVE_TRADING.md)** before your first real trade.
+> **Never places an order** — the only broker calls are read-only. At ₹1.5L the
+> advisor offers the **validated naked strangle** (2× stop, take profit at 50%);
+> smaller accounts fall back to defined-risk condors. Hard gates: ≤12% risk/trade,
+> VIX≥13, halt at −20%. Read **[LIVE_TRADING.md](LIVE_TRADING.md)** first.
 
 ### 4. The share-scalper (learning tool — this approach loses to costs)
 ```bash
@@ -92,10 +93,12 @@ python scripts/run_scalper_daemon.py  # autonomous dip-buy/rip-sell; shows GROSS
 ### 5. Research & backtests
 ```bash
 python scripts/run_options.py                                                 # options-selling backtest
+python scripts/run_cycling_study.py                                           # ⭐ profit-target study (why we take 50%)
 python scripts/download_data.py --resolution D --days 1825 --universe nifty200 # daily bars → cache
 python scripts/run_ml.py --universe nifty200 --top-k 20                        # ML factor model
 python scripts/run_ml_paper.py --top-k 20                                      # ML equity paper rebalance
 python scripts/run_backtest.py                                                 # intraday breakout backtest
+python scripts/run_paper.py                                                    # intraday breakout paper runner (early experiment)
 python -m pytest -q                                                            # 36 unit tests
 ```
 
@@ -126,9 +129,14 @@ See **[FINDINGS.md](FINDINGS.md)** for the full scorecard of what works and what
 
 ## Status & scope
 
-The one strategy with a real edge is **index option selling** (see FINDINGS.md).
-It's in **paper validation** — simulated fills, no real money. Everything price-based
-(intraday + ML) was tested and shown not to beat passive.
+The one strategy with a real edge is **index option selling** (see FINDINGS.md):
+a ~1-SD NIFTY strangle, 2× stop, **closed at 50% of credit** — 38.4%/yr and
+Sharpe 1.08 over 5.4 years. Everything price-based (intraday + ML) was tested and
+shown not to beat passive.
+
+**Current state:** paper validation, ₹1.5L basis. **1 completed cycle** (+₹5,576).
+The number that matters isn't the win — it's getting to ~20 cycles, including
+losses, to see whether the backtest holds up live.
 
 > Research/educational software. Not investment advice. Paper trading only —
 > no real orders are placed by this codebase.

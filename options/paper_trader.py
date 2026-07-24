@@ -17,6 +17,7 @@ import pandas as pd
 
 from config.settings import STATE_DIR
 from options.data import NIFTY_LOT, OptionsData, atm_strike
+from options.event_veto import EventVeto
 from options.pricing import intrinsic
 
 STATE_FILE = STATE_DIR / "options_paper.json"
@@ -88,6 +89,11 @@ class OptionsPaperTrader:
         if vix < self.vix_min:
             log["action"] = "wait"
             log["detail"] = {"reason": f"VIX {vix:.1f} < {self.vix_min} — premium too cheap to sell"}
+            return
+        veto = EventVeto().check(today, expiry)
+        if veto:
+            log["action"] = "wait"
+            log["detail"] = {"reason": veto}
             return
         dte = max((expiry - today).days, 1)
         move = spot * (vix / 100.0) * sqrt(dte / 365.0) * self.sd_width

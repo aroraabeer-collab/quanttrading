@@ -30,7 +30,10 @@ defined-risk iron condor — the advisor picks automatically.
 7. **Halt at −20% of account (−₹30,000).** Stop trading entirely. Review, don't
    revenge-trade. The advisor enforces this automatically.
 8. **Only sell when VIX ≥ 13.** Cheap premium isn't worth the tail.
-9. **Record every real fill.** That's how we learn what actually happens vs the model.
+9. **Never sell into a scheduled event.** The advisor auto-vetoes Budget (hard)
+   and RBI/election-class events (within 3 days). Keep `config/events.json`
+   current — verify RBI MPC dates at rbi.org.in.
+10. **Record every real fill.** That's how we learn what actually happens vs the model.
 
 ### ⚠️ A naked strangle's stop is a plan, not a guarantee
 

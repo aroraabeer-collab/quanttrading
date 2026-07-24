@@ -24,6 +24,7 @@ import pandas as pd
 from backtest.costs import GST_RATE
 from config.settings import Settings, get_settings
 from options.data import NIFTY_LOT, OptionsData, atm_strike
+from options.event_veto import EventVeto
 from options.vol_backtest import MARGIN_PER_LOT
 
 
@@ -79,6 +80,11 @@ class LiveCondorAdvisor:
             return Ticket(ok=False, spot=spot, vix=vix, expiry=expiry, dte=dte, reason=(
                 f"NO TRADE — VIX {vix:.1f} is below {s.vix_min}. Premium is too cheap "
                 "to justify the tail risk. Wait for richer volatility."))
+
+        # --- Gate 1.5: never sell premium into a known binary event -----------
+        veto = EventVeto(s).check(today, expiry)
+        if veto:
+            return Ticket(ok=False, spot=spot, vix=vix, expiry=expiry, dte=dte, reason=veto)
 
         # --- Short ~1SD strangle (the validated core) ---
         move = spot * (vix / 100.0) * sqrt(dte / 365.0)

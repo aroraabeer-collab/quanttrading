@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     live_max_lots: int = Field(default=1, alias="QT_LIVE_MAX_LOTS")
     live_halt_drawdown: float = Field(default=0.20, alias="QT_LIVE_HALT_DD")   # stop trading at -20%
     live_wing_points: int = Field(default=100, alias="QT_LIVE_WING_PTS")       # protective wing distance
+    # Event-risk veto: skip selling premium into Budget/RBI/election-class events.
+    live_event_veto: bool = Field(default=True, alias="QT_EVENT_VETO")
+    event_entry_buffer_days: int = Field(default=3, alias="QT_EVENT_BUFFER")
     live_profit_target: float = Field(default=0.50, alias="QT_LIVE_PROFIT_TGT")  # close at 50% of max premium
 
     # --- Mean-reversion (buy-the-dip toward VWAP) params ---

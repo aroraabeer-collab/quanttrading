@@ -82,7 +82,12 @@ python scripts/live_monitor.py --close 1850     # record the exit (₹ debit pai
 > **Never places an order** — the only broker calls are read-only. At ₹1.5L the
 > advisor offers the **validated naked strangle** (2× stop, take profit at 50%);
 > smaller accounts fall back to defined-risk condors. Hard gates: ≤12% risk/trade,
-> VIX≥13, halt at −20%. Read **[LIVE_TRADING.md](LIVE_TRADING.md)** first.
+> VIX≥13, **event veto** (no selling into Budget/RBI — `config/events.json`),
+> halt at −20%. Read **[LIVE_TRADING.md](LIVE_TRADING.md)** first.
+>
+> Event veto also accepts external flags at `state/event_flags.json` (same schema)
+> — a hook for a cron job or LLM news-checker to add vetoes. It can only *remove*
+> trades, never add them.
 
 ### 4. The share-scalper (learning tool — this approach loses to costs)
 ```bash

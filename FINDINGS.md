@@ -17,13 +17,32 @@ one has a real edge.**
 | 7 | Long-short market-neutral | Positional | ❌ No alpha | ≈ 0 after costs |
 | 8 | Min-variance / HRP portfolios | Positional | ⚠️ Marginal | Sharpe 1.54 vs 1.50, less return |
 | **9** | **Index option selling (VRP)** | **Monthly** | **✅ REAL EDGE** | **78% win, Sharpe 1.04** |
+| 10 | Composite indicators (MA+RSI+MACD+BB) | Intraday | ❌ Loses | −59% net (−3.6% gross) |
+| 11 | Hybrid: technical/vol regime veto on #9 | Filter | ❌ No help | Sharpe 0.88→0.79, bigger DD |
 
-## The one lesson that explains 1–8
+## The one lesson that explains 1–8, 10, 11
 
 **Price-based strategies don't beat passive.** Price is the most-arbitraged data
 on earth; no way of slicing/weighting/timing it manufactures returns that aren't
 there. Every price model either lost to costs (intraday) or merely reproduced
-market beta (positional). Proven ~7 different ways.
+market beta (positional). Proven **nine different ways** now.
+
+- **#10 (composite indicators):** ports NSE-QUANT-TRADER's MA+RSI+MACD+BB weighted
+  score. Gross −3.6% (48.6% win — a coin flip: no signal even before costs), net
+  **−59%** after honest intraday costs. Buy-and-hold (−0.2%) beat it by 58 points.
+  Fusing four indicators just gives four ways to generate edgeless, cost-bleeding
+  trades. (`strategy/composite.py`)
+- **#11 (hybrid ensemble — the veto test):** the honest way to "combine models" is
+  options-edge-trades + technical/vol signals as veto-only filters. Backtested a
+  regime veto (MA-stretch + momentum + VIX-spike ensemble) on the options
+  strategy: it **hurt** — Sharpe 0.88→0.79, total ₹161k→₹144k, and a *bigger*
+  drawdown (skipped good trades, missed the bad ones). The technical/vol signals
+  don't predict hostile cycles. **Shipped OFF by default.** (`options/regime_veto.py`)
+
+**Corollary:** you cannot ensemble your way to an edge. Averaging negative-
+expectancy signals yields a negative-expectancy ensemble. The only signals that
+help the options edge are **VIX≥13** (validated) and the **event calendar**
+(principled) — both veto-only.
 
 ## The one edge (#9): index option selling
 

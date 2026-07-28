@@ -64,6 +64,13 @@ class Settings(BaseSettings):
     # Event-risk veto: skip selling premium into Budget/RBI/election-class events.
     live_event_veto: bool = Field(default=True, alias="QT_EVENT_VETO")
     event_entry_buffer_days: int = Field(default=3, alias="QT_EVENT_BUFFER")
+    # Regime veto: OFF by default — backtested and it HURT (Sharpe 0.88->0.79,
+    # bigger drawdown). Kept for experimentation; the technical/vol signals don't
+    # predict hostile cycles. See FINDINGS.md. Enable with QT_REGIME_VETO=true.
+    live_regime_veto: bool = Field(default=False, alias="QT_REGIME_VETO")
+    regime_trend_z: float = Field(default=2.0, alias="QT_REGIME_TREND_Z")       # price stretch from SMA50
+    regime_momentum_mult: float = Field(default=2.0, alias="QT_REGIME_MOM_MULT")  # |20d ret| vs 20d vol
+    regime_vix_spike: float = Field(default=0.25, alias="QT_REGIME_VIX_SPIKE")   # VIX +25% in 5 days
     live_profit_target: float = Field(default=0.50, alias="QT_LIVE_PROFIT_TGT")  # close at 50% of max premium
 
     # --- Mean-reversion (buy-the-dip toward VWAP) params ---

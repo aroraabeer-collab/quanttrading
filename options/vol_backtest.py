@@ -65,14 +65,20 @@ def run_vol_backtest(
     stop_mult: float | None = None,   # stop-loss at this multiple of premium (None = to expiry)
     profit_target: float | None = None,  # take profit at this fraction of premium captured
     vix_min: float | None = None,     # only sell when VIX >= this (skip cheap-vol months)
+    regime_veto=None,                 # optional RegimeVeto: skip hostile regimes
 ) -> VolResult:
     df = pd.concat([spot.rename("S"), vix.rename("V")], axis=1).dropna()
     S, V, idx = df["S"].to_numpy(), df["V"].to_numpy(), df.index
     n = len(df)
     rows = []
+    nifty_s, vix_s = df["S"], df["V"]
     for i in range(0, n - hold_days, hold_days):
         if vix_min is not None and V[i] < vix_min:
             continue  # implied vol too cheap — sit out this cycle
+        if regime_veto is not None and i >= 55:
+            # Point-in-time check — only data up to entry, no lookahead.
+            if regime_veto.check(nifty_s.iloc[: i + 1], vix_s.iloc[: i + 1]):
+                continue
         S0, sig0 = S[i], V[i] / 100.0
         Texp_days = (idx[i + hold_days] - idx[i]).days
         T0 = Texp_days / 365.0

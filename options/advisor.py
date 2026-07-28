@@ -25,6 +25,7 @@ from backtest.costs import GST_RATE
 from config.settings import Settings, get_settings
 from options.data import NIFTY_LOT, OptionsData, atm_strike
 from options.event_veto import EventVeto
+from options.regime_veto import RegimeVeto
 from options.vol_backtest import MARGIN_PER_LOT
 
 
@@ -85,6 +86,11 @@ class LiveCondorAdvisor:
         veto = EventVeto(s).check(today, expiry)
         if veto:
             return Ticket(ok=False, spot=spot, vix=vix, expiry=expiry, dte=dte, reason=veto)
+
+        # --- Gate 1.6: regime veto (OFF by default — backtested to hurt) -------
+        regime = RegimeVeto(s).check_live(self.d)
+        if regime:
+            return Ticket(ok=False, spot=spot, vix=vix, expiry=expiry, dte=dte, reason=regime)
 
         # --- Short ~1SD strangle (the validated core) ---
         move = spot * (vix / 100.0) * sqrt(dte / 365.0)
